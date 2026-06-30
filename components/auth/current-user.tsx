@@ -1,29 +1,61 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useUser, useOrganization } from "@clerk/nextjs";
 
-// Exposes the signed-in user's display name app-wide, or null when Clerk is off
-// or signed out. The Clerk hook is only called inside the enabled branch, so
-// this is safe to mount without a ClerkProvider.
-const CurrentUserContext = createContext<string | null>(null);
-
-export function useCurrentUserName(): string | null {
-  return useContext(CurrentUserContext);
+// Team context: the signed-in user's display name + the active org's member
+// names. Clerk hooks are only called in the enabled branch, so this is safe to
+// mount without a ClerkProvider (it just yields nulls/empties).
+interface TeamInfo {
+  currentUserName: string | null;
+  memberNames: string[];
 }
 
-function ClerkUserBridge({ children }: { children: ReactNode }) {
+const TeamContext = createContext<TeamInfo>({
+  currentUserName: null,
+  memberNames: [],
+});
+
+export function useCurrentUserName(): string | null {
+  return useContext(TeamContext).currentUserName;
+}
+
+export function useTeamMemberNames(): string[] {
+  return useContext(TeamContext).memberNames;
+}
+
+function nameOf(u: {
+  firstName?: string | null;
+  lastName?: string | null;
+  identifier?: string | null;
+}): string {
+  const full = [u.firstName, u.lastName].filter(Boolean).join(" ").trim();
+  return full || u.identifier || "";
+}
+
+function ClerkTeamBridge({ children }: { children: ReactNode }) {
   const { user } = useUser();
-  const name = user
+  const { memberships } = useOrganization({ memberships: true });
+
+  const currentUserName = user
     ? user.fullName ||
       user.primaryEmailAddress?.emailAddress ||
       user.username ||
       null
     : null;
+
+  const memberNames = Array.from(
+    new Set(
+      (memberships?.data ?? [])
+        .map((m) => (m.publicUserData ? nameOf(m.publicUserData) : ""))
+        .filter((n): n is string => n.length > 0),
+    ),
+  );
+
   return (
-    <CurrentUserContext.Provider value={name}>
+    <TeamContext.Provider value={{ currentUserName, memberNames }}>
       {children}
-    </CurrentUserContext.Provider>
+    </TeamContext.Provider>
   );
 }
 
@@ -36,10 +68,10 @@ export function CurrentUserProvider({
 }) {
   if (!enabled) {
     return (
-      <CurrentUserContext.Provider value={null}>
+      <TeamContext.Provider value={{ currentUserName: null, memberNames: [] }}>
         {children}
-      </CurrentUserContext.Provider>
+      </TeamContext.Provider>
     );
   }
-  return <ClerkUserBridge>{children}</ClerkUserBridge>;
+  return <ClerkTeamBridge>{children}</ClerkTeamBridge>;
 }

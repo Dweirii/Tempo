@@ -11,7 +11,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, FileText } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileText, Boxes } from "lucide-react";
 import { usePlanner } from "@/lib/store";
 import {
   monthGrid,
@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { GenerateBlockButton } from "@/components/generate-block";
 import { ExportMenu } from "@/components/export-menu";
+import { useCurrentUserName } from "@/components/auth/current-user";
 import { FilterBar } from "./filter-bar";
 import { MonthGrid, MobileAgenda } from "./month-grid";
 import { WeekView } from "./week-view";
@@ -39,6 +40,7 @@ type Mode = "month" | "week";
 
 export function CalendarView() {
   const { state, moveItem } = usePlanner();
+  const me = useCurrentUserName();
   const [today] = useState(() => toISODate(new Date()));
   const [mode, setMode] = useState<Mode>("month");
   const [anchor, setAnchor] = useState(
@@ -119,7 +121,29 @@ export function CalendarView() {
         filters={filters}
         onChange={setFilters}
         categories={state.categories}
+        currentUser={me}
       />
+
+      {state.categories.length === 0 ? (
+        <div className="panel mb-4 flex flex-wrap items-center justify-between gap-3 p-4">
+          <div>
+            <div className="font-display text-base font-extrabold">
+              No categories yet
+            </div>
+            <div className="text-sm font-semibold text-muted">
+              Add categories or load the starter catalog to start generating
+              blocks.
+            </div>
+          </div>
+          <Link
+            href="/categories"
+            className="inline-flex h-10 items-center gap-2 rounded-lg border-2 border-ink bg-pink px-4 text-sm font-bold shadow-hard push"
+          >
+            <Boxes className="size-4" strokeWidth={2.5} />
+            Set up categories
+          </Link>
+        </div>
+      ) : null}
 
       <DndContext
         sensors={sensors}

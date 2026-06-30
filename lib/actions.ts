@@ -1,11 +1,15 @@
 "use server";
 
-// Server actions = the data layer. The generation engine runs here so it stays
-// the single source of truth across all users. Simple field edits update one
-// row; generation/seed/reset run the pure engine then persist the delta.
+// Server actions = the data layer, scoped to the active Clerk organization.
+// The org comes from the session (never the client). With Clerk off, everything
+// lives under a single "default" org so the app still runs open. The generation
+// engine runs here so it stays the single source of truth per org.
 
 import { randomUUID } from "node:crypto";
+import { auth } from "@clerk/nextjs/server";
 import { prisma } from "./db";
+import { clerkEnabled } from "./auth";
+import { uploadToBunny, deleteFromBunny } from "./bunny";
 import type {
   AssetMeta,
   Category,
@@ -19,9 +23,20 @@ import type {
   Subcategory,
   Week,
 } from "./types";
-import { createInitialState, generateNextBlock } from "./engine";
+import { generateNextBlock } from "./engine";
+import { seedCategories, seedSubcategories } from "./seed";
 
-// ── row → domain mappers (internal; non-exported) ──────────────────────────
+async function activeOrgId(): Promise<string> {
+  if (!clerkEnabled) return "default";
+  const { orgId } = await auth();
+  if (!orgId) throw new Error("NO_ACTIVE_ORG");
+  return orgId;
+}
+
+// compound primary key (orgId, id)
+const pk = (orgId: string, id: string) => ({ orgId_id: { orgId, id } });
+
+// ── row → domain mappers (orgId is dropped; domain types are org-free) ──────
 type Row = Record<string, unknown>;
 
 function mapCategory(c: Row): Category {
@@ -78,8 +93,9 @@ function mapItem(i: Row): ContentItem {
   };
 }
 
-function weekRow(w: Week) {
+function weekRow(w: Week, orgId: string) {
   return {
+    orgId,
     id: w.id,
     weekNumber: w.weekNumber,
     blockNumber: w.blockNumber,
@@ -90,8 +106,9 @@ function weekRow(w: Week) {
     storyRotation: w.storyRotation,
   };
 }
-function subRow(s: Subcategory) {
+function subRow(s: Subcategory, orgId: string) {
   return {
+    orgId,
     id: s.id,
     categoryId: s.categoryId,
     name: s.name,
@@ -101,12 +118,12 @@ function subRow(s: Subcategory) {
   };
 }
 
-async function readState(): Promise<PlannerState> {
+async function readState(orgId: string): Promise<PlannerState> {
   const [categories, subs, weeks, items] = await Promise.all([
-    prisma.category.findMany({ orderBy: { order: "asc" } }),
-    prisma.subcategory.findMany({ orderBy: { order: "asc" } }),
-    prisma.week.findMany({ orderBy: { weekNumber: "asc" } }),
-    prisma.contentItem.findMany(),
+    prisma.category.findMany({ where: { orgId }, orderBy: { order: "asc" } }),
+    prisma.subcategory.findMany({ where: { orgId }, orderBy: { order: "asc" } }),
+    prisma.week.findMany({ where: { orgId }, orderBy: { weekNumber: "asc" } }),
+    prisma.contentItem.findMany({ where: { orgId } }),
   ]);
   return {
     categories: categories.map(mapCategory),
@@ -116,35 +133,40 @@ async function readState(): Promise<PlannerState> {
   };
 }
 
-async function persistFresh(s: PlannerState): Promise<void> {
-  await prisma.$transaction([
-    prisma.category.createMany({ data: s.categories }),
-    prisma.subcategory.createMany({ data: s.subcategories.map(subRow) }),
-    prisma.week.createMany({ data: s.weeks.map(weekRow) }),
-    prisma.contentItem.createMany({ data: s.contentItems }),
-  ]);
-}
-
 // ── exported server actions ────────────────────────────────────────────────
 
-/** Initial load: seed + auto-generate Block 1 on first run, else read all. */
+/** Load this org's planner. New orgs start empty (no auto-seed) — they pick a
+ *  starter catalog or add their own categories. */
 export async function loadPlanner(): Promise<PlannerState> {
-  const count = await prisma.category.count();
+  return readState(await activeOrgId());
+}
+
+/** One-click: drop the starter catalog (Mockup / Packaging / PSD) into an empty
+ *  org. No-op if categories already exist. */
+export async function loadStarterCatalogAction(): Promise<PlannerState> {
+  const orgId = await activeOrgId();
+  const count = await prisma.category.count({ where: { orgId } });
   if (count === 0) {
-    const initial = createInitialState(new Date());
-    await persistFresh(initial);
-    return initial;
+    await prisma.$transaction([
+      prisma.category.createMany({
+        data: seedCategories().map((c) => ({ ...c, orgId })),
+      }),
+      prisma.subcategory.createMany({
+        data: seedSubcategories().map((s) => subRow(s, orgId)),
+      }),
+    ]);
   }
-  return readState();
+  return readState(orgId);
 }
 
 export async function refreshPlanner(): Promise<PlannerState> {
-  return readState();
+  return readState(await activeOrgId());
 }
 
 /** Run the rotation engine server-side and persist only the new rows/updates. */
 export async function generateNextBlockAction(): Promise<PlannerState> {
-  const current = await readState();
+  const orgId = await activeOrgId();
+  const current = await readState(orgId);
   const next = generateNextBlock(current, new Date());
 
   const oldWeeks = new Set(current.weeks.map((w) => w.id));
@@ -163,11 +185,13 @@ export async function generateNextBlockAction(): Promise<PlannerState> {
   });
 
   await prisma.$transaction([
-    prisma.week.createMany({ data: newWeeks.map(weekRow) }),
-    prisma.contentItem.createMany({ data: newItems }),
+    prisma.week.createMany({ data: newWeeks.map((w) => weekRow(w, orgId)) }),
+    prisma.contentItem.createMany({
+      data: newItems.map((i) => ({ ...i, orgId })),
+    }),
     ...changedSubs.map((s) =>
       prisma.subcategory.update({
-        where: { id: s.id },
+        where: pk(orgId, s.id),
         data: { used: s.used, usedInWeekId: s.usedInWeekId ?? null },
       }),
     ),
@@ -180,11 +204,10 @@ export async function updateItemAction(
   id: string,
   patch: Partial<ContentItem>,
 ): Promise<void> {
-  // id/weekId are managed separately (see moveItemAction); everything else is a
-  // plain editable scalar. Undefined fields are ignored by Prisma.
+  const orgId = await activeOrgId();
   const { id: _id, weekId: _weekId, ...data } = patch;
   if (Object.keys(data).length === 0) return;
-  await prisma.contentItem.update({ where: { id }, data });
+  await prisma.contentItem.update({ where: pk(orgId, id), data });
 }
 
 export async function moveItemAction(
@@ -193,8 +216,9 @@ export async function moveItemAction(
   dayOfWeek: number,
   weekId: string,
 ): Promise<void> {
+  const orgId = await activeOrgId();
   await prisma.contentItem.update({
-    where: { id },
+    where: pk(orgId, id),
     data: { date, dayOfWeek, weekId },
   });
 }
@@ -203,59 +227,103 @@ export async function setStatusAction(
   id: string,
   status: Status,
 ): Promise<void> {
-  await prisma.contentItem.update({ where: { id }, data: { status } });
+  const orgId = await activeOrgId();
+  await prisma.contentItem.update({ where: pk(orgId, id), data: { status } });
 }
 
 export async function updateWeekAction(
   id: string,
   patch: { theme?: string; storyRotation?: string[] },
 ): Promise<void> {
+  const orgId = await activeOrgId();
   const data: { theme?: string; storyRotation?: string[] } = {};
   if (patch.theme !== undefined) data.theme = patch.theme;
   if (patch.storyRotation !== undefined) data.storyRotation = patch.storyRotation;
   if (Object.keys(data).length === 0) return;
-  await prisma.week.update({ where: { id }, data });
+  await prisma.week.update({ where: pk(orgId, id), data });
 }
 
 export async function addSubcategoryAction(
   categoryId: string,
   name: string,
 ): Promise<Subcategory> {
+  const orgId = await activeOrgId();
   const agg = await prisma.subcategory.aggregate({
-    where: { categoryId },
+    where: { orgId, categoryId },
     _max: { order: true },
   });
   const order = (agg._max.order ?? -1) + 1;
   const row = await prisma.subcategory.create({
-    data: {
-      id: `sub-custom-${randomUUID()}`,
-      categoryId,
-      name,
-      used: false,
-      order,
-    },
+    data: { orgId, id: `sub-custom-${randomUUID()}`, categoryId, name, used: false, order },
   });
   return mapSub(row);
 }
 
 export async function toggleSubUsedAction(id: string): Promise<void> {
-  const sub = await prisma.subcategory.findUnique({ where: { id } });
+  const orgId = await activeOrgId();
+  const sub = await prisma.subcategory.findUnique({ where: pk(orgId, id) });
   if (!sub) return;
   await prisma.subcategory.update({
-    where: { id },
-    data: {
-      used: !sub.used,
-      usedInWeekId: !sub.used ? sub.usedInWeekId : null,
-    },
+    where: pk(orgId, id),
+    data: { used: !sub.used, usedInWeekId: !sub.used ? sub.usedInWeekId : null },
   });
 }
 
 export async function reorderSubcategoriesAction(
   orderedIds: string[],
 ): Promise<void> {
+  const orgId = await activeOrgId();
   await prisma.$transaction(
     orderedIds.map((id, i) =>
-      prisma.subcategory.update({ where: { id }, data: { order: i } }),
+      prisma.subcategory.update({ where: pk(orgId, id), data: { order: i } }),
+    ),
+  );
+}
+
+// ── categories (user-managed per org) ──────────────────────────────────────
+
+export async function addCategoryAction(
+  name: string,
+  color: string,
+): Promise<Category> {
+  const orgId = await activeOrgId();
+  const agg = await prisma.category.aggregate({
+    where: { orgId },
+    _max: { order: true },
+  });
+  const order = (agg._max.order ?? -1) + 1;
+  const id = `cat-${randomUUID()}`;
+  const row = await prisma.category.create({
+    data: { orgId, id, name, slug: id, order, productCount: 0, color },
+  });
+  return mapCategory(row);
+}
+
+export async function updateCategoryAction(
+  id: string,
+  patch: { name?: string; color?: string },
+): Promise<void> {
+  const orgId = await activeOrgId();
+  const data: { name?: string; color?: string } = {};
+  if (patch.name !== undefined) data.name = patch.name;
+  if (patch.color !== undefined) data.color = patch.color;
+  if (Object.keys(data).length === 0) return;
+  await prisma.category.update({ where: pk(orgId, id), data });
+}
+
+/** Deletes the category and (cascade) its subcategories, weeks, content + assets. */
+export async function deleteCategoryAction(id: string): Promise<void> {
+  const orgId = await activeOrgId();
+  await prisma.category.delete({ where: pk(orgId, id) });
+}
+
+export async function reorderCategoriesAction(
+  orderedIds: string[],
+): Promise<void> {
+  const orgId = await activeOrgId();
+  await prisma.$transaction(
+    orderedIds.map((cid, i) =>
+      prisma.category.update({ where: pk(orgId, cid), data: { order: i } }),
     ),
   );
 }
@@ -266,12 +334,21 @@ const ASSET_SELECT = {
   contentItemId: true,
   filename: true,
   mimeType: true,
+  url: true,
   width: true,
   height: true,
 } as const;
 
+function extFor(mimeType: string): string {
+  if (mimeType === "image/png") return "png";
+  if (mimeType === "image/webp") return "webp";
+  return "jpg";
+}
+
 export async function loadAssets(): Promise<AssetMeta[]> {
+  const orgId = await activeOrgId();
   return prisma.asset.findMany({
+    where: { orgId },
     select: ASSET_SELECT,
     orderBy: { createdAt: "asc" },
   });
@@ -287,13 +364,21 @@ export async function uploadAssetAction(
     height: number;
   },
 ): Promise<AssetMeta> {
+  const orgId = await activeOrgId();
+  const id = `asset-${randomUUID()}`;
+  const path = `assets/${orgId}/${id}.${extFor(payload.mimeType)}`;
+  const bytes = new Uint8Array(Buffer.from(payload.dataBase64, "base64"));
+  const url = await uploadToBunny(path, bytes, payload.mimeType);
+
   return prisma.asset.create({
     data: {
-      id: `asset-${randomUUID()}`,
+      orgId,
+      id,
       contentItemId,
       filename: payload.filename,
       mimeType: payload.mimeType,
-      data: Buffer.from(payload.dataBase64, "base64"),
+      url,
+      path,
       width: payload.width,
       height: payload.height,
     },
@@ -302,17 +387,22 @@ export async function uploadAssetAction(
 }
 
 export async function deleteAssetAction(id: string): Promise<void> {
-  await prisma.asset.delete({ where: { id } });
+  const orgId = await activeOrgId();
+  const asset = await prisma.asset.findUnique({
+    where: pk(orgId, id),
+    select: { path: true },
+  });
+  await prisma.asset.delete({ where: pk(orgId, id) });
+  if (asset?.path) await deleteFromBunny(asset.path);
 }
 
 export async function resetAllAction(): Promise<PlannerState> {
+  const orgId = await activeOrgId();
   await prisma.$transaction([
-    prisma.contentItem.deleteMany(),
-    prisma.week.deleteMany(),
-    prisma.subcategory.deleteMany(),
-    prisma.category.deleteMany(),
+    prisma.contentItem.deleteMany({ where: { orgId } }),
+    prisma.week.deleteMany({ where: { orgId } }),
+    prisma.subcategory.deleteMany({ where: { orgId } }),
+    prisma.category.deleteMany({ where: { orgId } }),
   ]);
-  const initial = createInitialState(new Date());
-  await persistFresh(initial);
-  return initial;
+  return { categories: [], subcategories: [], weeks: [], contentItems: [] };
 }

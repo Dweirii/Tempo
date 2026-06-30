@@ -2,7 +2,9 @@
 // See AGENTS.md / project spec: month = 4-week block focused on one category,
 // each week inside the block focuses on one subcategory.
 
-export type CategorySlug = "mockup-studio" | "packaging" | "psd-eps";
+// Categories are user-managed per org, so the slug is just a string. The seed
+// catalog still uses meaningful slugs (mockup-studio, …).
+export type CategorySlug = string;
 
 export type Slot =
   | "POST 1"
@@ -81,12 +83,13 @@ export interface PlannerState {
 }
 
 // Image bytes are never loaded into client state — only this light metadata is.
-// Thumbnails are fetched lazily from /api/assets/[id].
+// Thumbnails load directly from the Bunny CDN `url`.
 export interface AssetMeta {
   id: string;
   contentItemId: string;
   filename: string;
   mimeType: string;
+  url: string;
   width: number;
   height: number;
 }

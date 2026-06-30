@@ -22,7 +22,7 @@ import type {
   Status,
   Week,
 } from "./types";
-import { createInitialState, generateNextBlock } from "./engine";
+import { generateNextBlock } from "./engine";
 import { addDays, parseISODate } from "./dates";
 import { uid } from "./utils";
 import { downscaleImage } from "./image";
@@ -38,6 +38,11 @@ import {
   addSubcategoryAction,
   toggleSubUsedAction,
   reorderSubcategoriesAction,
+  loadStarterCatalogAction,
+  addCategoryAction,
+  updateCategoryAction,
+  deleteCategoryAction,
+  reorderCategoriesAction,
   uploadAssetAction,
   deleteAssetAction,
   resetAllAction,
@@ -58,6 +63,11 @@ export interface PlannerActions {
   addSubcategory: (categoryId: string, name: string) => void;
   toggleSubUsed: (id: string) => void;
   reorderSubcategories: (categoryId: string, orderedIds: string[]) => void;
+  loadStarterCatalog: () => void;
+  addCategory: (name: string, color: string) => void;
+  updateCategory: (id: string, patch: { name?: string; color?: string }) => void;
+  deleteCategory: (id: string) => void;
+  reorderCategories: (orderedIds: string[]) => void;
   uploadAsset: (contentItemId: string, file: File) => Promise<void>;
   deleteAsset: (id: string) => void;
   resetAll: () => void;
@@ -287,8 +297,112 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
         deleteAssetAction(id).catch(log);
       },
 
+      loadStarterCatalog: () => {
+        loadStarterCatalogAction().then(setState).catch(log);
+      },
+
+      addCategory: (name, color) => {
+        const tempId = `cat-temp-${uid()}`;
+        setState((prev) => {
+          if (!prev) return prev;
+          const maxOrder = prev.categories.reduce(
+            (m, c) => Math.max(m, c.order),
+            -1,
+          );
+          return {
+            ...prev,
+            categories: [
+              ...prev.categories,
+              {
+                id: tempId,
+                name,
+                slug: tempId,
+                order: maxOrder + 1,
+                productCount: 0,
+                color,
+              },
+            ],
+          };
+        });
+        addCategoryAction(name, color)
+          .then((created) =>
+            setState((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    categories: prev.categories.map((c) =>
+                      c.id === tempId ? created : c,
+                    ),
+                  }
+                : prev,
+            ),
+          )
+          .catch((e) => {
+            log(e);
+            setState((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    categories: prev.categories.filter((c) => c.id !== tempId),
+                  }
+                : prev,
+            );
+          });
+      },
+
+      updateCategory: (id, patch) => {
+        setState((prev) =>
+          prev
+            ? {
+                ...prev,
+                categories: prev.categories.map((c) =>
+                  c.id === id ? { ...c, ...patch } : c,
+                ),
+              }
+            : prev,
+        );
+        updateCategoryAction(id, patch).catch(log);
+      },
+
+      deleteCategory: (id) => {
+        setState((prev) => {
+          if (!prev) return prev;
+          const weekIds = new Set(
+            prev.weeks.filter((w) => w.categoryId === id).map((w) => w.id),
+          );
+          return {
+            ...prev,
+            categories: prev.categories.filter((c) => c.id !== id),
+            subcategories: prev.subcategories.filter((s) => s.categoryId !== id),
+            weeks: prev.weeks.filter((w) => w.categoryId !== id),
+            contentItems: prev.contentItems.filter((i) => !weekIds.has(i.weekId)),
+          };
+        });
+        deleteCategoryAction(id).catch(log);
+      },
+
+      reorderCategories: (orderedIds) => {
+        const rank = new Map(orderedIds.map((id, i) => [id, i]));
+        setState((prev) =>
+          prev
+            ? {
+                ...prev,
+                categories: prev.categories.map((c) =>
+                  rank.has(c.id) ? { ...c, order: rank.get(c.id)! } : c,
+                ),
+              }
+            : prev,
+        );
+        reorderCategoriesAction(orderedIds).catch(log);
+      },
+
       resetAll: () => {
-        setState(createInitialState(new Date()));
+        setState({
+          categories: [],
+          subcategories: [],
+          weeks: [],
+          contentItems: [],
+        });
         setAssets([]);
         resetAllAction().then(setState).catch(log);
       },

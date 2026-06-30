@@ -9,8 +9,13 @@ import { formatDayLabel, DAY_NAMES_LONG, parseISODate } from "@/lib/dates";
 import { Drawer } from "@/components/ui/drawer";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { FormatPill } from "@/components/ui/tags";
 import { AssetGallery } from "./asset-gallery";
+import {
+  useCurrentUserName,
+  useTeamMemberNames,
+} from "@/components/auth/current-user";
 
 export function DayEditorDrawer({
   itemId,
@@ -23,6 +28,15 @@ export function DayEditorDrawer({
 }) {
   const { state, updateItem, setStatus, moveItem, updateWeek, setStory } =
     usePlanner();
+  const me = useCurrentUserName();
+  const memberNames = useTeamMemberNames();
+  const knownAssignees = Array.from(
+    new Set(
+      [me, ...memberNames, ...state.contentItems.map((i) => i.assignee)].filter(
+        (a): a is string => !!a && a.trim().length > 0,
+      ),
+    ),
+  );
   const item = itemId
     ? state.contentItems.find((i) => i.id === itemId)
     : undefined;
@@ -94,13 +108,33 @@ export function DayEditorDrawer({
             </Field>
           </div>
 
-          <Field label="Assignee">
-            <Input
-              value={item.assignee}
-              placeholder="Who's on it?"
-              onChange={(e) => updateItem(item.id, { assignee: e.target.value })}
-            />
-          </Field>
+          <div className="flex flex-col gap-1.5">
+            <span className="eyebrow">Assignee</span>
+            <div className="flex gap-2">
+              <Input
+                value={item.assignee}
+                placeholder="Who's on it?"
+                list="assignee-options"
+                onChange={(e) =>
+                  updateItem(item.id, { assignee: e.target.value })
+                }
+              />
+              {me ? (
+                <Button
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => updateItem(item.id, { assignee: me })}
+                >
+                  Me
+                </Button>
+              ) : null}
+            </div>
+            <datalist id="assignee-options">
+              {knownAssignees.map((a) => (
+                <option key={a} value={a} />
+              ))}
+            </datalist>
+          </div>
 
           <Field label="Concept">
             <Textarea

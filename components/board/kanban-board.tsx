@@ -25,6 +25,7 @@ import { FormatPill, OwnerTag } from "@/components/ui/tags";
 import { DayEditorDrawer } from "@/components/calendar/day-editor-drawer";
 import { FilterBar } from "@/components/calendar/filter-bar";
 import { itemPasses, type CalendarFilters } from "@/components/calendar/filters";
+import { useCurrentUserName } from "@/components/auth/current-user";
 
 function CardFace({ item, dragging }: { item: ContentItem; dragging?: boolean }) {
   const { state, assets } = usePlanner();
@@ -44,7 +45,7 @@ function CardFace({ item, dragging }: { item: ContentItem; dragging?: boolean })
         <div className="overflow-hidden rounded-md border-2 border-ink">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={`/api/assets/${cover.id}`}
+            src={cover.url}
             alt=""
             className="h-24 w-full object-cover"
           />
@@ -146,6 +147,7 @@ function Column({
 
 export function KanbanBoard() {
   const { state, setStatus } = usePlanner();
+  const me = useCurrentUserName();
   const [filters, setFilters] = useState<CalendarFilters>({});
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -175,6 +177,7 @@ export function KanbanBoard() {
         filters={filters}
         onChange={setFilters}
         categories={state.categories}
+        currentUser={me}
       />
 
       <DndContext

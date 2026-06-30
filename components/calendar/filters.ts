@@ -6,6 +6,7 @@ export interface CalendarFilters {
   format?: Format;
   owner?: Owner;
   status?: Status;
+  assignee?: string;
 }
 
 export function itemPasses(
@@ -16,6 +17,7 @@ export function itemPasses(
   if (f.format && item.format !== f.format) return false;
   if (f.owner && item.owner !== f.owner) return false;
   if (f.status && item.status !== f.status) return false;
+  if (f.assignee && item.assignee !== f.assignee) return false;
   if (f.categoryId) {
     const w = weekById(state, item.weekId);
     if (!w || w.categoryId !== f.categoryId) return false;
@@ -24,5 +26,6 @@ export function itemPasses(
 }
 
 export function activeFilterCount(f: CalendarFilters): number {
-  return [f.categoryId, f.format, f.owner, f.status].filter(Boolean).length;
+  return [f.categoryId, f.format, f.owner, f.status, f.assignee].filter(Boolean)
+    .length;
 }

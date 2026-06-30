@@ -11,7 +11,7 @@ export interface DownscaledImage {
 
 export async function downscaleImage(
   file: File,
-  maxDim = 1024,
+  maxDim = 2560,
 ): Promise<DownscaledImage> {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
@@ -27,7 +27,9 @@ export async function downscaleImage(
   bitmap.close?.();
 
   const mimeType = "image/jpeg";
-  const dataUrl = canvas.toDataURL(mimeType, 0.82);
+  // High quality at a generous cap so the stored image is good enough to view
+  // and download — while staying under the server-action body limit.
+  const dataUrl = canvas.toDataURL(mimeType, 0.92);
   const dataBase64 = dataUrl.split(",")[1] ?? "";
   const filename = file.name.replace(/\.[^.]+$/, "") + ".jpg";
 

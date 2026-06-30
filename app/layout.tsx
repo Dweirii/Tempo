@@ -5,6 +5,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { PlannerProvider } from "@/lib/store";
 import { AppShell } from "@/components/app-shell";
 import { CurrentUserProvider } from "@/components/auth/current-user";
+import { AuthedApp } from "@/components/auth/authed-app";
 import { clerkEnabled } from "@/lib/auth";
 
 const bricolage = Bricolage_Grotesque({
@@ -36,17 +37,23 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // With Clerk on: AuthedApp gates sign-in + active org, then mounts the planner
+  // (keyed by org). Off: mount the planner directly under a single default org.
+  const inner = clerkEnabled ? (
+    <AuthedApp>{children}</AuthedApp>
+  ) : (
+    <PlannerProvider>
+      <AppShell>{children}</AppShell>
+    </PlannerProvider>
+  );
+
   const html = (
     <html
       lang="en"
       className={`${bricolage.variable} ${hanken.variable} ${spaceMono.variable} h-full`}
     >
       <body className="min-h-full">
-        <CurrentUserProvider enabled={clerkEnabled}>
-          <PlannerProvider>
-            <AppShell>{children}</AppShell>
-          </PlannerProvider>
-        </CurrentUserProvider>
+        <CurrentUserProvider enabled={clerkEnabled}>{inner}</CurrentUserProvider>
       </body>
     </html>
   );

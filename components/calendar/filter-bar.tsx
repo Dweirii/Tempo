@@ -1,6 +1,6 @@
 "use client";
 
-import { X } from "lucide-react";
+import { X, User } from "lucide-react";
 import type { Category } from "@/lib/types";
 import { STATUSES } from "@/lib/types";
 import { FORMATS, OWNERS, FORMAT_META, OWNER_META, STATUS_META } from "@/lib/ui";
@@ -15,10 +15,12 @@ export function FilterBar({
   filters,
   onChange,
   categories,
+  currentUser,
 }: {
   filters: CalendarFilters;
   onChange: (f: CalendarFilters) => void;
   categories: Category[];
+  currentUser?: string | null;
 }) {
   const set = (patch: Partial<CalendarFilters>) =>
     onChange({ ...filters, ...patch });
@@ -88,6 +90,25 @@ export function FilterBar({
           })),
         ]}
       />
+
+      {currentUser ? (
+        <button
+          type="button"
+          onClick={() =>
+            set({
+              assignee:
+                filters.assignee === currentUser ? undefined : currentUser,
+            })
+          }
+          className={cn(
+            "inline-flex h-9 items-center gap-1.5 rounded-lg border-2 border-ink px-2.5 text-xs font-bold shadow-hard-sm push",
+            filters.assignee === currentUser ? "bg-pink" : "bg-white",
+          )}
+        >
+          <User className="size-3.5" />
+          Mine
+        </button>
+      ) : null}
 
       <button
         type="button"

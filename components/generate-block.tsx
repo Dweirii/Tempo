@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Wand2, Plus } from "lucide-react";
+import { Wand2, Plus, AlertTriangle } from "lucide-react";
 import { usePlanner } from "@/lib/store";
 import { planNextBlock } from "@/lib/engine";
 import { formatWeekRange } from "@/lib/dates";
@@ -17,11 +17,21 @@ export function GenerateBlockButton({
 }) {
   const { state, generateBlock } = usePlanner();
   const [open, setOpen] = useState(false);
-  const plan = open ? planNextBlock(state, new Date()) : null;
+
+  const hasCategories = state.categories.length > 0;
+  const plan = open && hasCategories ? planNextBlock(state, new Date()) : null;
+  const emptyQueue = !!plan && plan.weeks.length === 0;
+  const canCreate = !!plan && plan.weeks.length > 0;
 
   return (
     <>
-      <Button variant="primary" size={size} onClick={() => setOpen(true)}>
+      <Button
+        variant="primary"
+        size={size}
+        onClick={() => setOpen(true)}
+        disabled={!hasCategories}
+        title={hasCategories ? undefined : "Add a category first"}
+      >
         <Wand2 className="size-4" strokeWidth={2.5} />
         {label}
       </Button>
@@ -32,9 +42,11 @@ export function GenerateBlockButton({
         accent={plan?.category.color}
         title={plan ? `Generate Block ${plan.blockNumber}` : "Generate block"}
         subtitle={
-          plan
+          plan && !emptyQueue
             ? `${plan.category.name} · 4 weeks · ${plan.weeks.length * 7} content items`
-            : undefined
+            : plan
+              ? plan.category.name
+              : undefined
         }
         footer={
           <>
@@ -43,6 +55,7 @@ export function GenerateBlockButton({
             </Button>
             <Button
               variant="primary"
+              disabled={!canCreate}
               onClick={() => {
                 generateBlock();
                 setOpen(false);
@@ -54,7 +67,15 @@ export function GenerateBlockButton({
           </>
         }
       >
-        {plan ? (
+        {plan && emptyQueue ? (
+          <div className="flex items-start gap-2 rounded-lg border-2 border-ink bg-sun px-3 py-2.5 text-sm font-bold">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" strokeWidth={2.5} />
+            <span>
+              <b>{plan.category.name}</b> has no subcategories yet. Add some in
+              the Categories tab before generating a block for it.
+            </span>
+          </div>
+        ) : plan ? (
           <div className="flex flex-col gap-3">
             {plan.recycled ? (
               <div className="rounded-lg border-2 border-ink bg-sun px-3 py-2 text-xs font-bold">

@@ -1,5 +1,9 @@
-// Brandex Studio Planner — shared Postgres (Neon) schema.
-// String ids match the engine's deterministic ids (e.g. "week-1-1", "sub-...").
+// Brandex/Tempo Studio Planner — shared Postgres (Neon) schema.
+// Multi-tenant: every row is scoped by `orgId` (the active Clerk organization,
+// or "default" when Clerk is disabled). Primary key is the composite
+// (orgId, id) so the engine's deterministic ids (e.g. "week-1-1") stay unique
+// across organizations. Domain types stay orgId-free — orgId is added/stripped
+// at the actions boundary.
 
 generator client {
   provider = "prisma-client-js"
@@ -10,48 +14,57 @@ datasource db {
 }
 
 model Category {
-  id            String        @id
+  orgId         String
+  id            String
   name          String
-  slug          String        @unique
+  slug          String
   order         Int
   productCount  Int
   color         String
   subcategories Subcategory[]
   weeks         Week[]
+
+  @@id([orgId, id])
+  @@unique([orgId, slug])
 }
 
 model Subcategory {
-  id           String   @id
+  orgId        String
+  id           String
   categoryId   String
-  category     Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  category     Category @relation(fields: [orgId, categoryId], references: [orgId, id], onDelete: Cascade)
   name         String
   used         Boolean  @default(false)
   usedInWeekId String?
   order        Int
 
-  @@index([categoryId])
+  @@id([orgId, id])
+  @@index([orgId, categoryId])
 }
 
 model Week {
-  id            String        @id
+  orgId         String
+  id            String
   weekNumber    Int
   blockNumber   Int
   categoryId    String
-  category      Category      @relation(fields: [categoryId], references: [id])
+  category      Category      @relation(fields: [orgId, categoryId], references: [orgId, id], onDelete: Cascade)
   subcategoryId String
   theme         String
-  startDate     String // ISO yyyy-mm-dd (Sunday)
-  storyRotation Json // string[7]
+  startDate     String
+  storyRotation Json
   contentItems  ContentItem[]
 
-  @@index([categoryId])
+  @@id([orgId, id])
+  @@index([orgId, categoryId])
 }
 
 model ContentItem {
-  id            String @id
+  orgId         String
+  id            String
   weekId        String
-  week          Week   @relation(fields: [weekId], references: [id], onDelete: Cascade)
-  date          String // ISO yyyy-mm-dd
+  week          Week    @relation(fields: [orgId, weekId], references: [orgId, id], onDelete: Cascade)
+  date          String
   dayOfWeek     Int
   slot          String
   format        String
@@ -66,20 +79,24 @@ model ContentItem {
   status        String
   assets        Asset[]
 
-  @@index([weekId])
-  @@index([date])
+  @@id([orgId, id])
+  @@index([orgId, weekId])
+  @@index([orgId, date])
 }
 
 model Asset {
-  id            String      @id
+  orgId         String
+  id            String
   contentItemId String
-  contentItem   ContentItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  contentItem   ContentItem @relation(fields: [orgId, contentItemId], references: [orgId, id], onDelete: Cascade)
   filename      String
   mimeType      String
-  data          Bytes // downscaled image bytes
+  url           String // public Bunny CDN URL
+  path          String // storage-zone path (for deletion)
   width         Int
   height        Int
   createdAt     DateTime    @default(now())
 
-  @@index([contentItemId])
+  @@id([orgId, id])
+  @@index([orgId, contentItemId])
 }

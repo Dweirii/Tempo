@@ -1,8 +1,9 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-// Gate everything except the auth routes — but only when Clerk keys exist.
-// Without keys the app stays open so it still runs locally.
+// Next 16 renamed Middleware -> Proxy (same semantics). Gate everything except
+// the auth routes — but only when Clerk keys exist. Without keys the app stays
+// open so it still runs locally.
 const enabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 const isPublicRoute = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)"]);
 

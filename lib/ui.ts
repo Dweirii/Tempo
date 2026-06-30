@@ -27,3 +27,15 @@ export const OWNER_META: Record<Owner, { label: string; bg: string }> = {
 
 export const FORMATS: Format[] = ["Post", "Reel", "Story", "Custom"];
 export const OWNERS: Owner[] = ["Design", "Social", "Video"];
+
+// Palette offered when creating/editing a category.
+export const CATEGORY_COLORS = [
+  "#FF90E8",
+  "#FFC900",
+  "#90DDFF",
+  "#C79BFF",
+  "#7ED98C",
+  "#FF9A52",
+  "#FF6B6B",
+  "#9BE15D",
+];

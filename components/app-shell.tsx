@@ -11,12 +11,15 @@ import {
   Boxes,
   Menu,
   X,
-  Sparkles,
 } from "lucide-react";
+import { UserButton, OrganizationSwitcher } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import { usePlanner } from "@/lib/store";
 import { currentWeek, categoryById } from "@/lib/selectors";
 import { toISODate } from "@/lib/dates";
+import { clerkEnabled } from "@/lib/auth";
+import { GuideProvider, GuideButton } from "@/components/guide";
+import { WelcomeDialog } from "@/components/welcome";
 
 const NAV = [
   { href: "/", label: "Calendar", icon: CalendarDays },
@@ -106,22 +109,46 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
         <Brand />
       </div>
       <NavLinks onNavigate={onNavigate} />
+      <GuideButton onNavigate={onNavigate} />
       <div className="mt-auto flex flex-col gap-3">
         <BlockChip />
-        {/* Auth seam: drop a Clerk <UserButton/> here once keys are configured. */}
-        <div className="flex items-center gap-2.5 rounded-lg border-2 border-white/25 bg-white/5 px-3 py-2">
-          <span className="grid size-7 place-items-center rounded-full border-2 border-ink bg-sun text-xs font-extrabold text-ink">
-            BX
-          </span>
-          <span className="min-w-0 leading-tight">
-            <span className="block truncate text-xs font-bold text-white">
-              Studio Team
+        {clerkEnabled ? (
+          <div className="rounded-lg border-2 border-ink bg-white px-1.5 py-1">
+            <OrganizationSwitcher
+              hidePersonal
+              afterSelectOrganizationUrl="/"
+              afterCreateOrganizationUrl="/"
+              appearance={{
+                elements: {
+                  rootBox: "w-full",
+                  organizationSwitcherTrigger: "w-full justify-start gap-2",
+                },
+              }}
+            />
+          </div>
+        ) : null}
+        {clerkEnabled ? (
+          <div className="flex items-center gap-2.5 rounded-lg border-2 border-white/25 bg-white/5 px-3 py-2">
+            <UserButton />
+            <span className="min-w-0 truncate text-xs font-bold text-white">
+              My account
             </span>
-            <span className="block truncate text-[10px] font-semibold text-white/45">
-              Internal · local
+          </div>
+        ) : (
+          <div className="flex items-center gap-2.5 rounded-lg border-2 border-white/25 bg-white/5 px-3 py-2">
+            <span className="grid size-7 place-items-center rounded-full border-2 border-ink bg-sun text-xs font-extrabold text-ink">
+              BX
             </span>
-          </span>
-        </div>
+            <span className="min-w-0 leading-tight">
+              <span className="block truncate text-xs font-bold text-white">
+                Studio Team
+              </span>
+              <span className="block truncate text-[10px] font-semibold text-white/45">
+                Internal · local
+              </span>
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -129,16 +156,27 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const pathname = usePathname();
+
+  // Auth routes render standalone (no sidebar) so the sign-in card is centered.
+  if (pathname.startsWith("/sign-in") || pathname.startsWith("/sign-up")) {
+    return (
+      <main className="canvas-texture grid min-h-dvh place-items-center p-6">
+        {children}
+      </main>
+    );
+  }
 
   return (
-    <div className="min-h-dvh ">
+    <GuideProvider>
+      <div className="min-h-dvh ">
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r-2 border-ink bg-ink md:block rounded-tr-2xl rounded-br-2xl">
+      <aside className="no-print fixed inset-y-0 left-0 z-30 hidden w-64 border-r-2 border-ink bg-ink md:block rounded-tr-2xl rounded-br-2xl">
         <SidebarInner />
       </aside>
 
       {/* Mobile top bar */}
-      <header className="sticky top-0 z-30 flex items-center justify-between border-b-2 border-ink bg-ink px-4 py-3 md:hidden">
+      <header className="no-print sticky top-0 z-30 flex items-center justify-between border-b-2 border-ink bg-ink px-4 py-3 md:hidden">
         <Brand />
         <Dialog.Root open={menuOpen} onOpenChange={setMenuOpen}>
           <Dialog.Trigger asChild>
@@ -173,6 +211,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           {children}
         </div>
       </main>
-    </div>
+        <WelcomeDialog />
+      </div>
+    </GuideProvider>
   );
 }

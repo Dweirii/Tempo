@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, type ChangeEvent } from "react";
-import { ImagePlus, X, Loader2 } from "lucide-react";
+import { ImagePlus, X, Loader2, Download } from "lucide-react";
 import { usePlanner } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -10,18 +10,20 @@ export function AssetGallery({ itemId }: { itemId: string }) {
   const items = assets.filter((a) => a.contentItemId === itemId);
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const onPick = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
     if (!files.length) return;
     setBusy(true);
+    setError(null);
     try {
       for (const f of files) {
         if (f.type.startsWith("image/")) await uploadAsset(itemId, f);
       }
     } catch (err) {
-      console.error(err);
+      setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setBusy(false);
     }
@@ -38,10 +40,19 @@ export function AssetGallery({ itemId }: { itemId: string }) {
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={`/api/assets/${a.id}`}
+              src={a.url}
               alt={a.filename}
               className="size-full object-cover"
             />
+            <a
+              href={a.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Open full size"
+              className="absolute left-1 top-1 grid size-6 place-items-center rounded-md border-2 border-ink bg-white opacity-0 shadow-hard-sm transition-opacity group-hover:opacity-100"
+            >
+              <Download className="size-3.5" />
+            </a>
             <button
               onClick={() => deleteAsset(a.id)}
               aria-label="Delete asset"
@@ -67,6 +78,9 @@ export function AssetGallery({ itemId }: { itemId: string }) {
           )}
         </button>
       </div>
+      {error ? (
+        <span className="text-xs font-semibold text-[#d33]">{error}</span>
+      ) : null}
       <input
         ref={inputRef}
         type="file"

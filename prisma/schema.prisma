@@ -1,0 +1,85 @@
+// Brandex Studio Planner — shared Postgres (Neon) schema.
+// String ids match the engine's deterministic ids (e.g. "week-1-1", "sub-...").
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Category {
+  id            String        @id
+  name          String
+  slug          String        @unique
+  order         Int
+  productCount  Int
+  color         String
+  subcategories Subcategory[]
+  weeks         Week[]
+}
+
+model Subcategory {
+  id           String   @id
+  categoryId   String
+  category     Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name         String
+  used         Boolean  @default(false)
+  usedInWeekId String?
+  order        Int
+
+  @@index([categoryId])
+}
+
+model Week {
+  id            String        @id
+  weekNumber    Int
+  blockNumber   Int
+  categoryId    String
+  category      Category      @relation(fields: [categoryId], references: [id])
+  subcategoryId String
+  theme         String
+  startDate     String // ISO yyyy-mm-dd (Sunday)
+  storyRotation Json // string[7]
+  contentItems  ContentItem[]
+
+  @@index([categoryId])
+}
+
+model ContentItem {
+  id            String @id
+  weekId        String
+  week          Week   @relation(fields: [weekId], references: [id], onDelete: Cascade)
+  date          String // ISO yyyy-mm-dd
+  dayOfWeek     Int
+  slot          String
+  format        String
+  concept       String
+  caption       String
+  hashtags      String
+  assetUrl      String
+  trendingAudio String
+  productSku    String
+  owner         String
+  assignee      String
+  status        String
+  assets        Asset[]
+
+  @@index([weekId])
+  @@index([date])
+}
+
+model Asset {
+  id            String      @id
+  contentItemId String
+  contentItem   ContentItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  filename      String
+  mimeType      String
+  data          Bytes // downscaled image bytes
+  width         Int
+  height        Int
+  createdAt     DateTime    @default(now())
+
+  @@index([contentItemId])
+}

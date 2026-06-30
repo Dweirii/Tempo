@@ -1,0 +1,183 @@
+@import "tailwindcss";
+
+@theme {
+  /* ── Palette: Gumroad-flavored. High-contrast, saturated, black ink. ── */
+  --color-paper: #faf6ec;
+  --color-ink: #000000;
+  --color-muted: #726c5f;
+  --color-line: #000000;
+
+  --color-pink: #ff90e8;
+  --color-pink-deep: #f15fd6;
+  --color-lilac: #c79bff;
+  --color-sky: #90ddff;
+  --color-sun: #ffc900;
+  --color-mint: #7ed98c;
+  --color-tang: #ff9a52;
+
+  /* format coding (spec): Post=blue, Reel=purple, Custom=orange, Story=green */
+  --color-post: #7aa2ff;
+  --color-reel: #c79bff;
+  --color-story: #7ed98c;
+  --color-custom: #ff9a52;
+
+  /* ── Type ── */
+  --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-space-mono), ui-monospace, monospace;
+
+  /* ── Hard offset shadows (no blur) ── */
+  --shadow-hard-xs: 1.5px 1.5px 0 0 var(--color-ink);
+  --shadow-hard-sm: 2px 2px 0 0 var(--color-ink);
+  --shadow-hard: 4px 4px 0 0 var(--color-ink);
+  --shadow-hard-lg: 7px 7px 0 0 var(--color-ink);
+
+  --radius-xl: 0.85rem;
+}
+
+@layer base {
+  html {
+    background: var(--color-paper);
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01";
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+    line-height: 1.02;
+  }
+  ::selection {
+    background: var(--color-pink);
+    color: #000;
+  }
+  /* Chunky black scrollbars to match the brutalist frame */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #000 transparent;
+  }
+}
+
+@layer components {
+  /* Warm paper canvas with a faint dot-grid for texture. */
+  .canvas-texture {
+    background-color: var(--color-paper);
+    background-image: radial-gradient(rgba(0, 0, 0, 0.08) 1.1px, transparent 1.1px);
+    background-size: 22px 22px;
+    background-position: -11px -11px;
+  }
+
+  .panel {
+    @apply rounded-xl border-2 border-ink bg-white;
+    box-shadow: var(--shadow-hard);
+  }
+
+  /* A small solid sticker tag — used for pills / badges (bg set inline). */
+  .tag {
+    @apply inline-flex items-center gap-1 rounded-full border-2 border-ink px-2 py-[1px]
+      text-[11px] font-bold leading-5 text-ink whitespace-nowrap;
+  }
+
+  .eyebrow {
+    @apply font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted;
+  }
+
+  .field {
+    @apply w-full rounded-lg border-2 border-ink bg-white px-3 py-2 text-sm font-medium
+      text-ink outline-none transition-shadow placeholder:text-muted/70
+      focus:shadow-[var(--shadow-hard-sm)];
+  }
+}
+
+/* The signature Gumroad "push": shadow collapses as the element is pressed. */
+@layer utilities {
+  .push {
+    transition:
+      transform 80ms ease,
+      box-shadow 80ms ease;
+  }
+  .push:hover {
+    transform: translate(1px, 1px);
+    box-shadow: var(--shadow-hard-sm);
+  }
+  .push:active {
+    transform: translate(4px, 4px);
+    box-shadow: none;
+  }
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes pop-in {
+  from {
+    transform: translateY(10px) scale(0.97);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+@keyframes rise {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@keyframes sheet-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* Print: drop the app chrome so the weekly brief prints as a clean sheet. */
+.print-exact {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+@media print {
+  aside,
+  header {
+    display: none !important;
+  }
+  main {
+    padding: 0 !important;
+    background: #fff !important;
+    background-image: none !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .panel {
+    box-shadow: none !important;
+  }
+}
